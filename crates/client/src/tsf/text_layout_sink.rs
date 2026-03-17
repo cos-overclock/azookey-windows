@@ -22,7 +22,24 @@ impl ITfTextLayoutSink_Impl for TextServiceFactory_Impl {
         _lcode: TfLayoutCode,
         _pview: Option<&ITfContextView>,
     ) -> Result<()> {
-        self.update_pos()?;
+        let should_skip = match self.borrow_mut() {
+            Ok(mut text_service) => text_service
+                .update_pos_state
+                .should_skip_layout_change(std::time::Instant::now()),
+            Err(error) => {
+                tracing::warn!("Skip OnLayoutChange due to borrow conflict: {error:?}");
+                true
+            }
+        };
+
+        if should_skip {
+            tracing::debug!("Skip layout-triggered update_pos to avoid feedback loop");
+            return Ok(());
+        }
+
+        if let Err(error) = self.update_pos() {
+            tracing::warn!("Failed to update position from OnLayoutChange: {error:?}");
+        }
 
         Ok(())
     }
